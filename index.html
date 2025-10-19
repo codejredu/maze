@@ -1,0 +1,566 @@
+
+<!DOCTYPE html>
+<html lang="he">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>רובוט במבוך</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --cell-size: 50px;
+            --grid-gap: 4px;
+            --bg-color: #0c0a1f;
+            --wall-color: transparent;
+            --path-glow-color: rgba(0, 255, 255, 0.7);
+            --path-bg-color: rgba(0, 100, 120, 0.2);
+            --finish-glow-color: #ffee00;
+            --robot-eye-color: #d82ff7;
+            --font-family: 'Orbitron', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            background-image:
+                radial-gradient(circle at 20% 20%, rgba(100, 100, 255, 0.2) 0%, transparent 40%),
+                radial-gradient(circle at 80% 70%, rgba(255, 100, 100, 0.2) 0%, transparent 40%);
+            background-attachment: fixed;
+            color: white;
+            font-family: var(--font-family);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            text-align: center;
+        }
+
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            padding: 20px;
+        }
+
+        h2 {
+            font-size: 2rem;
+            color: var(--path-glow-color);
+            text-shadow: 0 0 10px var(--path-glow-color);
+        }
+
+        #maze-grid {
+            display: flex;
+            flex-direction: column;
+            gap: var(--grid-gap);
+            border: 2px solid rgba(0, 255, 255, 0.2);
+            padding: 10px;
+            border-radius: 10px;
+            background-color: rgba(0, 0, 0, 0.2);
+            /* position: relative; IS NOW ON THE WRAPPER */
+        }
+
+        .maze-row {
+            display: flex;
+            gap: var(--grid-gap);
+        }
+
+        .cell {
+            width: var(--cell-size);
+            height: var(--cell-size);
+            background-color: var(--wall-color);
+            position: relative;
+        }
+
+        .path, .start, .finish {
+            background-color: var(--path-bg-color);
+            border: 1px solid var(--path-border-color);
+            box-shadow: 0 0 10px var(--path-glow-color), inset 0 0 10px var(--path-glow-color);
+            border-radius: 5px;
+        }
+
+        .finish::after {
+            content: '🪐';
+            font-size: calc(var(--cell-size) * 0.7);
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            filter: drop-shadow(0 0 5px var(--finish-glow-color));
+        }
+
+        #robot {
+            position: absolute;
+            width: var(--cell-size);
+            height: var(--cell-size);
+            transition: top 0.2s linear, left 0.2s linear;
+            z-index: 10;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            visibility: hidden;
+            transform: translate(10px, 10px); /* Robot's own offset */
+        }
+        
+        #robot.hit {
+            animation: hit-animation 0.5s;
+        }
+
+        @keyframes hit-animation {
+            0%, 100% { transform: translate(10px, 10px); }
+            20% { transform: translate(5px, 10px); }
+            40% { transform: translate(15px, 10px); }
+            60% { transform: translate(5px, 10px); }
+            80% { transform: translate(15px, 10px); }
+        }
+
+        #robot svg {
+            width: 90%;
+            height: 90%;
+            transition: transform 0.2s ease;
+            filter: drop-shadow(0 0 8px var(--robot-eye-color));
+        }
+        
+        #robot.hit svg {
+             filter: drop-shadow(0 0 8px red);
+        }
+
+        footer {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+        }
+
+        .btn {
+            background-color: rgba(0, 255, 255, 0.1);
+            border: 2px solid var(--path-glow-color);
+            color: var(--path-glow-color);
+            font-size: 2.5rem;
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            cursor: pointer;
+            text-shadow: 0 0 10px var(--path-glow-color);
+            transition: all 0.2s ease;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            user-select: none;
+        }
+
+        .btn:hover:not(:disabled) {
+            background-color: rgba(0, 255, 255, 0.3);
+            box-shadow: 0 0 15px var(--path-glow-color);
+        }
+
+        .btn:active:not(:disabled) {
+            transform: scale(0.9);
+        }
+        
+        .btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.4;
+        }
+
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+        
+        .modal.show {
+            display: flex;
+        }
+
+        .modal-content {
+            background-color: var(--bg-color);
+            padding: 30px;
+            border-radius: 15px;
+            border: 2px solid var(--path-glow-color);
+            box-shadow: 0 0 20px var(--path-glow-color);
+            text-align: center;
+        }
+
+        .modal-content h3 {
+            margin-top: 0;
+            font-size: 2rem;
+            color: var(--path-glow-color);
+        }
+        
+        .modal-content .btn {
+            font-size: 1.5rem;
+            width: auto;
+            height: auto;
+            padding: 10px 20px;
+            border-radius: 10px;
+            margin: 10px;
+        }
+
+        #number-pad {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+
+        .num-btn {
+            font-size: 2rem;
+            width: 70px;
+            height: 70px;
+        }
+        
+        .num-btn.span-2 {
+            grid-column: span 2;
+            width: 150px;
+        }
+        
+        .error {
+            color: red;
+            font-size: 1.5rem;
+            border: 2px solid red;
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        @media (max-width: 600px) {
+            :root {
+                --cell-size: 40px;
+            }
+            .btn {
+                width: 60px;
+                height: 60px;
+                font-size: 2rem;
+            }
+        }
+    </style>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body>
+    <div class="game-container">
+        <h2 id="level-title"></h2>
+        <div style="position: relative;"> <!-- NEW WRAPPER FOR POSITIONING -->
+            <div id="maze-grid"></div>
+            <div id="robot">
+                <svg width="100%" height="100%" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <g>
+                        <rect x="10" y="15" width="60" height="50" rx="10" fill="#FFD700"/>
+                        <rect x="5" y="30" width="10" height="20" rx="5" fill="#00CED1"/>
+                        <rect x="65" y="30" width="10" height="20" rx="5" fill="#00CED1"/>
+                        <circle cx="25" cy="25" r="5" fill="#FF69B4" stroke="#fff" stroke-width="2"/>
+                        <circle cx="55" cy="25" r="5" fill="#FF69B4" stroke="#fff" stroke-width="2"/>
+                        <rect x="35" y="65" width="10" height="10" fill="#9370DB"/>
+                    </g>
+                </svg>
+            </div>
+        </div>
+        <footer>
+            <button class="btn" id="left-btn" title="שמאלה">↺</button>
+            <button class="btn" id="forward-btn" title="קדימה">▲</button>
+            <button class="btn" id="right-btn" title="ימינה">↻</button>
+            <button class="btn" id="reset-btn" title="איפוס">⟳</button>
+        </footer>
+    </div>
+
+    <div id="win-modal" class="modal">
+        <div class="modal-content">
+            <h3 id="win-title">ניצחון!</h3>
+            <p id="win-message"></p>
+            <button class="btn" id="next-level-btn">השלב הבא</button>
+            <button class="btn" id="play-again-btn">שחק שוב</button>
+        </div>
+    </div>
+    
+    <div id="number-pad-modal" class="modal">
+        <div class="modal-content">
+            <h3>בחר מספר צעדים</h3>
+            <div id="number-pad">
+                <button class="btn num-btn" data-steps="1">1</button>
+                <button class="btn num-btn" data-steps="2">2</button>
+                <button class="btn num-btn" data-steps="3">3</button>
+                <button class="btn num-btn" data-steps="4">4</button>
+                <button class="btn num-btn" data-steps="5">5</button>
+                <button class="btn num-btn" data-steps="6">6</button>
+                <button class="btn num-btn span-2" data-steps="7">7</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const mazeGrid = document.getElementById('maze-grid');
+        const robotEl = document.getElementById('robot');
+        const robotSvg = document.querySelector('#robot svg');
+        const levelTitle = document.getElementById('level-title');
+        const winModal = document.getElementById('win-modal');
+        const winMessage = document.getElementById('win-message');
+        const nextLevelBtn = document.getElementById('next-level-btn');
+        const playAgainBtn = document.getElementById('play-again-btn');
+        const numberPadModal = document.getElementById('number-pad-modal');
+        
+        const mazes = [
+            // Level 1
+            [[1,1,1,1,1,1,1,1],[1,3,0,0,1,0,0,1],[1,1,1,0,1,0,1,1],[1,0,0,0,1,0,0,1],[1,0,1,1,1,1,0,1],[1,0,0,0,0,1,0,1],[1,1,1,1,0,1,1,1],[1,2,0,0,0,1,1,1]],
+            // Level 2
+            [[1,1,1,1,1,1,1,1],[1,0,0,0,0,0,3,1],[1,0,1,1,1,1,1,1],[1,0,1,0,0,0,0,1],[1,0,1,0,1,1,0,1],[1,0,1,0,1,0,0,1],[1,0,0,0,1,1,1,1],[1,2,1,1,1,1,1,1]],
+            // Level 3
+            [[1,1,1,1,1,1,1,1,1],[1,3,0,1,0,0,0,0,1],[1,1,0,1,0,1,1,1,1],[1,0,0,0,0,1,0,0,1],[1,0,1,1,1,1,0,1,1],[1,0,0,0,1,0,0,0,1],[1,1,1,0,1,0,1,1,1],[1,0,0,0,0,0,0,1,1],[1,2,1,1,1,1,1,1,1]],
+            // Level 4
+            [[1,1,1,1,1,1,1,1,1],[1,0,0,0,1,0,0,0,1],[1,0,1,0,1,0,1,0,1],[1,0,1,0,0,0,1,3,1],[1,0,1,1,1,1,1,1,1],[1,0,0,0,0,0,0,0,1],[1,1,1,1,1,0,1,1,1],[1,0,0,0,1,0,0,1,1],[1,1,1,1,1,2,1,1,1]],
+            // Level 5
+            [[1,1,1,1,1,1,1,1,1,1],[1,0,0,0,0,1,3,0,0,1],[1,0,1,1,1,1,1,1,0,1],[1,0,0,0,0,0,0,1,0,1],[1,1,1,1,1,1,0,1,1,1],[1,0,0,0,0,1,0,0,0,1],[1,0,1,1,1,1,1,1,0,1],[1,0,1,0,0,0,0,0,0,1],[1,1,1,0,1,1,1,1,1,1],[1,2,0,0,1,1,1,1,1,1]],
+            // Level 6
+            [[1,1,1,1,1,1,1,1,1,1],[1,0,0,1,0,0,0,1,3,1],[1,1,0,1,0,1,1,1,1,1],[1,0,0,1,0,0,0,0,0,1],[1,0,1,1,1,1,1,1,0,1],[1,0,0,0,0,0,0,1,0,1],[1,1,1,1,1,1,0,1,0,1],[1,0,0,0,0,0,0,1,0,1],[1,0,1,1,1,1,1,1,0,1],[1,0,0,0,0,0,0,0,2,1]],
+            // Level 7
+            [[1,1,1,1,1,1,1,1,1,1],[1,0,1,0,0,0,1,0,0,1],[1,0,1,0,1,0,1,0,1,1],[1,0,0,0,1,3,1,0,0,1],[1,1,1,1,1,1,1,1,0,1],[1,0,0,0,0,0,0,0,0,1],[1,0,1,1,1,1,1,1,1,1],[1,0,1,0,0,0,0,0,0,1],[1,0,1,1,1,1,1,1,0,1],[1,2,0,0,0,0,0,0,0,1]],
+            // Level 8
+            [[1,1,1,1,1,1,1,1,1,1],[1,0,0,0,1,0,0,0,0,1],[1,1,1,0,1,0,1,1,0,1],[1,3,1,0,1,0,0,1,0,1],[1,1,1,0,1,1,0,1,1,1],[1,0,0,0,0,0,0,0,0,1],[1,0,1,1,1,1,1,1,0,1],[1,0,1,0,0,0,0,1,0,1],[1,0,1,0,1,1,1,1,0,1],[1,2,0,0,0,0,0,0,0,1]],
+            // Level 9
+            [[1,1,1,1,1,1,1,1,1,1,1,1],[1,0,0,0,0,0,0,1,0,0,3,1],[1,0,1,1,1,1,1,1,0,1,1,1],[1,0,0,0,0,0,0,1,0,0,0,1],[1,1,1,1,1,1,0,1,1,1,0,1],[1,0,0,0,0,1,0,0,0,0,0,1],[1,0,1,1,0,1,1,1,1,1,1,1],[1,0,1,0,0,0,0,1,0,0,0,1],[1,0,1,1,1,1,0,1,0,1,0,1],[1,0,0,0,0,0,0,1,0,1,0,1],[1,1,1,1,1,1,1,1,0,1,1,1],[1,2,0,0,0,0,0,0,0,1,1,1]],
+            // Level 10
+            [[1,1,1,1,1,1,1,1,1,1,1,1],[1,0,0,1,0,0,0,0,0,1,3,1],[1,0,1,1,0,1,1,1,0,1,1,1],[1,0,0,0,0,1,0,0,0,0,0,1],[1,1,1,1,1,1,0,1,1,1,0,1],[1,0,0,0,0,0,0,0,0,1,0,1],[1,0,1,1,1,1,1,1,0,1,0,1],[1,0,1,0,0,0,0,1,0,0,0,1],[1,0,1,0,1,1,0,1,1,1,1,1],[1,0,1,0,1,0,0,0,0,0,0,1],[1,0,1,1,1,0,1,1,1,1,0,1],[1,2,0,0,0,0,1,1,1,1,1,1]],
+            // Level 11
+            [[1,1,1,1,1,1,1,1,1,1,1,1],[1,0,0,0,0,0,0,0,0,0,0,1],[1,1,1,1,0,1,1,1,1,1,0,1],[1,3,0,1,0,1,0,0,0,1,0,1],[1,1,0,1,0,1,0,1,0,1,0,1],[1,0,0,1,0,1,0,1,0,1,0,1],[1,0,1,1,0,1,0,1,0,1,0,1],[1,0,0,0,0,1,0,1,0,0,0,1],[1,1,1,1,1,1,0,1,1,1,1,1],[1,0,0,0,0,0,0,0,0,0,0,1],[1,0,1,1,1,1,1,1,1,1,0,1],[1,2,0,0,0,0,0,0,0,0,0,1]],
+            // Level 12
+            [[1,1,1,1,1,1,1,1,1,1,1,1],[1,3,0,0,0,1,0,0,0,0,0,1],[1,1,1,1,0,1,0,1,1,1,0,1],[1,0,0,1,0,1,0,1,0,0,0,1],[1,0,1,1,0,1,0,1,0,1,1,1],[1,0,0,0,0,1,0,1,0,0,0,1],[1,1,1,1,1,1,0,1,1,1,0,1],[1,0,0,0,0,0,0,0,0,0,0,1],[1,0,1,1,1,1,1,1,1,1,0,1],[1,0,0,0,1,0,0,0,0,1,0,1],[1,1,1,0,1,0,1,1,0,1,0,1],[1,2,0,0,1,0,0,0,0,1,1,1]]
+        ];
+
+        const levelColors = [
+            { path: 'rgba(0, 255, 255, 0.7)', bg: 'rgba(0, 100, 120, 0.2)', border: 'rgba(0, 255, 255, 0.4)' },
+            { path: 'rgba(255, 0, 255, 0.7)', bg: 'rgba(120, 0, 100, 0.2)', border: 'rgba(255, 0, 255, 0.4)' },
+            { path: 'rgba(0, 255, 0, 0.7)', bg: 'rgba(0, 120, 0, 0.2)', border: 'rgba(0, 255, 0, 0.4)' },
+            { path: 'rgba(255, 165, 0, 0.7)', bg: 'rgba(120, 80, 0, 0.2)', border: 'rgba(255, 165, 0, 0.4)' },
+            { path: 'rgba(255, 255, 0, 0.7)', bg: 'rgba(120, 120, 0, 0.2)', border: 'rgba(255, 255, 0, 0.4)' },
+            { path: 'rgba(255, 0, 0, 0.7)', bg: 'rgba(120, 0, 0, 0.2)', border: 'rgba(255, 0, 0, 0.4)' },
+            { path: 'rgba(0, 0, 255, 0.7)', bg: 'rgba(0, 0, 120, 0.2)', border: 'rgba(0, 0, 255, 0.4)' },
+            { path: 'rgba(138, 43, 226, 0.7)', bg: 'rgba(70, 20, 110, 0.2)', border: 'rgba(138, 43, 226, 0.4)' },
+            { path: 'rgba(255, 20, 147, 0.7)', bg: 'rgba(120, 10, 70, 0.2)', border: 'rgba(255, 20, 147, 0.4)' },
+            { path: 'rgba(238, 130, 238, 0.7)', bg: 'rgba(110, 60, 110, 0.2)', border: 'rgba(238, 130, 238, 0.4)' },
+            { path: 'rgba(127, 255, 212, 0.7)', bg: 'rgba(60, 120, 100, 0.2)', border: 'rgba(127, 255, 212, 0.4)' },
+            { path: 'rgba(240, 230, 140, 0.7)', bg: 'rgba(120, 110, 70, 0.2)', border: 'rgba(240, 230, 140, 0.4)' },
+        ];
+        
+        let currentLevel = 0;
+        let robotPos = null;
+        let robotDir = 0; // 0: up, 1: right, 2: down, 3: left
+        let isMoving = false;
+
+        function findStart(maze) {
+            for (let r = 0; r < maze.length; r++) {
+                for (let c = 0; c < maze[r].length; c++) {
+                    if (maze[r][c] === 2) return { r, c };
+                }
+            }
+            return null; // Start not found
+        }
+
+        function buildMaze() {
+            const currentMaze = mazes[currentLevel];
+            mazeGrid.innerHTML = '';
+            
+            let html = '';
+            for (let r = 0; r < currentMaze.length; r++) {
+                html += '<div class="maze-row">';
+                for (let c = 0; c < currentMaze[r].length; c++) {
+                    let cellType = 'wall';
+                    if (currentMaze[r][c] === 0) cellType = 'path';
+                    if (currentMaze[r][c] === 2) cellType = 'start path';
+                    if (currentMaze[r][c] === 3) cellType = 'finish path';
+                    html += `<div class="cell ${cellType}"></div>`;
+                }
+                html += '</div>';
+            }
+            mazeGrid.innerHTML = html;
+        }
+
+        function updateRobotStyle() {
+            if (!robotPos) return;
+
+            const style = getComputedStyle(document.documentElement);
+            const cellSize = parseInt(style.getPropertyValue('--cell-size'), 10);
+            const gridGap = parseInt(style.getPropertyValue('--grid-gap'), 10);
+            const gridPadding = parseInt(getComputedStyle(mazeGrid).getPropertyValue('padding-top'), 10);
+                       
+            robotEl.style.top = `${robotPos.r * (cellSize + gridGap) + gridPadding}px`;
+            robotEl.style.left = `${robotPos.c * (cellSize + gridGap) + gridPadding}px`;
+            
+            const dirToAngleMap = { 0: 0, 1: 90, 2: 180, 3: 270 };
+            robotSvg.style.transform = `rotate(${dirToAngleMap[robotDir]}deg)`;
+        }
+        
+        function disableControls(disabled) {
+            document.querySelectorAll('footer .btn').forEach(btn => {
+                btn.disabled = disabled;
+            });
+        }
+        
+        function handleHitWall() {
+            robotEl.classList.add('hit');
+            setTimeout(() => {
+                robotEl.classList.remove('hit');
+                resetLevel();
+            }, 500);
+        }
+
+        function handleWin() {
+            winMessage.textContent = `השלמת את שלב ${currentLevel + 1}!`;
+            nextLevelBtn.style.display = (currentLevel < mazes.length - 1) ? 'inline-block' : 'none';
+            if (currentLevel >= mazes.length - 1) {
+                winMessage.textContent = 'כל הכבוד! סיימת את כל השלבים!';
+            }
+            winModal.classList.add('show');
+        }
+        
+        function moveRobotForward() {
+            const dr = [-1, 0, 1, 0]; // up, right, down, left
+            const dc = [0, 1, 0, -1];
+
+            const nextPos = {
+                r: robotPos.r + dr[robotDir],
+                c: robotPos.c + dc[robotDir]
+            };
+            
+            const currentMaze = mazes[currentLevel];
+            if (nextPos.r < 0 || nextPos.r >= currentMaze.length ||
+                nextPos.c < 0 || nextPos.c >= currentMaze[nextPos.r].length ||
+                currentMaze[nextPos.r][nextPos.c] === 1) {
+                return { hitWall: true, hitFinish: false };
+            }
+
+            robotPos = nextPos;
+            updateRobotStyle();
+
+            if (mazes[currentLevel][robotPos.r][robotPos.c] === 3) {
+                return { hitWall: false, hitFinish: true };
+            }
+            
+            return { hitWall: false, hitFinish: false };
+        }
+        
+        async function moveRobotSteps(steps) {
+            if (isMoving) return;
+            isMoving = true;
+            disableControls(true);
+            let gameOver = false;
+
+            for (let i = 0; i < steps; i++) {
+                await new Promise(resolve => setTimeout(resolve, 300));
+                const moveResult = moveRobotForward();
+
+                if (moveResult.hitWall) {
+                    handleHitWall();
+                    gameOver = true;
+                    break;
+                }
+                if (moveResult.hitFinish) {
+                    handleWin();
+                    gameOver = true;
+                    break;
+                }
+            }
+            
+            isMoving = false;
+            if (!gameOver) {
+                disableControls(false);
+            }
+        }
+        
+        function showNumberPad() {
+            numberPadModal.classList.add('show');
+        }
+
+        function hideNumberPad() {
+            numberPadModal.classList.remove('show');
+        }
+
+        function resetLevel() {
+            robotEl.style.visibility = 'hidden';
+            winModal.classList.remove('show');
+            hideNumberPad();
+            
+            levelTitle.textContent = `שלב ${currentLevel + 1}`;
+            
+            const currentMaze = mazes[currentLevel];
+            robotPos = findStart(currentMaze);
+            
+            if (!robotPos) {
+                mazeGrid.innerHTML = `<div class="error">שגיאה בטעינת שלב ${currentLevel + 1}. לא נמצאה נקודת התחלה.</div>`;
+                console.error(`Start position not found for level ${currentLevel + 1}`);
+                disableControls(true);
+                return;
+            }
+
+            const colors = levelColors[currentLevel % levelColors.length];
+            document.documentElement.style.setProperty('--path-glow-color', colors.path);
+            document.documentElement.style.setProperty('--path-bg-color', colors.bg);
+            document.documentElement.style.setProperty('--path-border-color', colors.border);
+
+            buildMaze();
+
+            robotDir = 0; // Always start facing up
+            updateRobotStyle();
+            
+            robotEl.style.visibility = 'visible';
+            isMoving = false;
+            disableControls(false);
+        }
+
+        // --- Event Listeners ---
+        const forwardBtn = document.getElementById('forward-btn');
+        const leftBtn = document.getElementById('left-btn');
+        const rightBtn = document.getElementById('right-btn');
+        const resetBtn = document.getElementById('reset-btn');
+
+        forwardBtn.addEventListener('click', () => {
+            showNumberPad();
+        });
+
+        leftBtn.addEventListener('click', () => {
+            robotDir = (robotDir + 3) % 4; // (current - 1 + 4) % 4 for counter-clockwise
+            updateRobotStyle();
+        });
+
+        rightBtn.addEventListener('click', () => {
+            robotDir = (robotDir + 1) % 4; // (current + 1) % 4 for clockwise
+            updateRobotStyle();
+        });
+
+        resetBtn.addEventListener('click', () => {
+            resetLevel();
+        });
+        
+        numberPadModal.addEventListener('click', (e) => {
+            if (e.target.classList.contains('num-btn')) {
+                const steps = parseInt(e.target.dataset.steps, 10);
+                hideNumberPad();
+                moveRobotSteps(steps);
+            } else if (e.target.id === 'number-pad-modal') {
+                hideNumberPad();
+            }
+        });
+        
+        nextLevelBtn.addEventListener('click', () => {
+            if (currentLevel < mazes.length - 1) {
+                currentLevel++;
+                resetLevel();
+            }
+        });
+
+        playAgainBtn.addEventListener('click', () => {
+            currentLevel = 0;
+            resetLevel();
+        });
+
+        // --- Initial Load ---
+        resetLevel();
+    </script>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>
