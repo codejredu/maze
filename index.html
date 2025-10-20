@@ -37,17 +37,18 @@
             margin: 0;
             overflow: hidden;
             text-align: center;
+            min-height: 100vh;
         }
 
         .game-container {
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 8px; /* Control spacing between elements */
+            justify-content: center;
+            gap: 15px; /* Control spacing between elements */
             padding: 15px; /* Adjusted padding */
-            width: 100%;
-            min-height: 100vh;
             box-sizing: border-box;
+            max-width: 100%;
         }
 
         #level-indicator {
@@ -74,7 +75,6 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            flex-grow: 1;
             width: 100%;
         }
 
@@ -429,7 +429,7 @@
 
         @media (max-width: 600px) {
             .game-container {
-                gap: 4px;
+                gap: 10px;
                 padding: 5px 0;
             }
             #maze-grid {
@@ -511,6 +511,17 @@
                 <svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M23 4v6h-6"></path>
                     <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                </svg>
+            </button>
+            <button class="btn" id="mute-btn" title="השתק">
+                <svg id="sound-on-icon" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                </svg>
+                <svg id="sound-off-icon" style="display: none;" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                    <line x1="23" y1="9" x2="17" y2="15"></line>
+                    <line x1="17" y1="9" x2="23" y2="15"></line>
                 </svg>
             </button>
         </footer>
@@ -631,6 +642,148 @@
         const editorPalette = document.getElementById('editor-palette');
         const importFileInput = document.getElementById('import-file-input');
         
+        // --- Sound Manager ---
+        const soundManager = {
+            audioCtx: null,
+            isMuted: false,
+            init() {
+                if (this.audioCtx) return;
+                try {
+                    this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                } catch (e) {
+                    console.error("AudioContext not supported.", e);
+                }
+            },
+            playSound(type) {
+                if (!this.audioCtx || this.isMuted) return;
+
+                const now = this.audioCtx.currentTime;
+                const gainNode = this.audioCtx.createGain();
+                gainNode.connect(this.audioCtx.destination);
+                
+                let oscillator;
+
+                switch(type) {
+                    case 'turn':
+                        oscillator = this.audioCtx.createOscillator();
+                        oscillator.type = 'sawtooth';
+                        oscillator.frequency.setValueAtTime(120, now);
+                        oscillator.frequency.linearRampToValueAtTime(80, now + 0.1);
+                        gainNode.gain.setValueAtTime(0.1, now);
+                        gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+                        oscillator.connect(gainNode);
+                        oscillator.start(now);
+                        oscillator.stop(now + 0.1);
+                        break;
+                    
+                    case 'moveStep':
+                        oscillator = this.audioCtx.createOscillator();
+                        oscillator.type = 'square';
+                        oscillator.frequency.setValueAtTime(150, now);
+                        gainNode.gain.setValueAtTime(0.1, now);
+                        gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+                        oscillator.connect(gainNode);
+                        oscillator.start(now);
+                        oscillator.stop(now + 0.15);
+                        break;
+
+                    case 'selectMove':
+                    case 'click':
+                        oscillator = this.audioCtx.createOscillator();
+                        oscillator.type = 'sine';
+                        oscillator.frequency.setValueAtTime(440, now);
+                        gainNode.gain.setValueAtTime(0.2, now);
+                        gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+                        oscillator.connect(gainNode);
+                        oscillator.start(now);
+                        oscillator.stop(now + 0.1);
+                        break;
+                        
+                    case 'hitWall':
+                        oscillator = this.audioCtx.createOscillator();
+                        oscillator.type = 'square';
+                        oscillator.frequency.setValueAtTime(200, now);
+                        oscillator.frequency.exponentialRampToValueAtTime(50, now + 0.3);
+                        gainNode.gain.setValueAtTime(0.3, now);
+                        gainNode.gain.linearRampToValueAtTime(0, now + 0.3);
+                        oscillator.connect(gainNode);
+                        oscillator.start(now);
+                        oscillator.stop(now + 0.3);
+                        break;
+
+                    case 'winLevel':
+                        const frequencies = [392.00, 523.25, 659.25, 783.99]; // G4, C5, E5, G5
+                        frequencies.forEach((freq, i) => {
+                            const osc = this.audioCtx.createOscillator();
+                            osc.type = 'triangle';
+                            osc.frequency.setValueAtTime(freq, now + i * 0.1);
+                            const g = this.audioCtx.createGain();
+                            g.gain.setValueAtTime(0.15, now + i * 0.1);
+                            g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.1 + 0.1);
+                            osc.connect(g);
+                            g.connect(this.audioCtx.destination);
+                            osc.start(now + i * 0.1);
+                            osc.stop(now + i * 0.1 + 0.1);
+                        });
+                        break;
+
+                    case 'startLevel':
+                         oscillator = this.audioCtx.createOscillator();
+                         oscillator.type = 'triangle';
+                         oscillator.frequency.setValueAtTime(220, now);
+                         oscillator.frequency.exponentialRampToValueAtTime(880, now + 0.2);
+                         gainNode.gain.setValueAtTime(0.2, now);
+                         gainNode.gain.linearRampToValueAtTime(0, now + 0.2);
+                         oscillator.connect(gainNode);
+                         oscillator.start(now);
+                         oscillator.stop(now + 0.2);
+                         break;
+                    
+                    case 'openModal':
+                         const bufferSize = this.audioCtx.sampleRate * 0.2;
+                         const buffer = this.audioCtx.createBuffer(1, bufferSize, this.audioCtx.sampleRate);
+                         let data = buffer.getChannelData(0);
+                         for (let i = 0; i < bufferSize; i++) {
+                            data[i] = Math.random() * 2 - 1;
+                         }
+                         const noise = this.audioCtx.createBufferSource();
+                         noise.buffer = buffer;
+                         const filter = this.audioCtx.createBiquadFilter();
+                         filter.type = 'bandpass';
+                         filter.frequency.setValueAtTime(200, now);
+                         filter.frequency.linearRampToValueAtTime(2000, now + 0.15);
+                         noise.connect(filter);
+                         filter.connect(gainNode);
+                         gainNode.gain.setValueAtTime(0.2, now);
+                         gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+                         noise.start(now);
+                         noise.stop(now + 0.2);
+                         break;
+                }
+            },
+            toggleMute() {
+                this.isMuted = !this.isMuted;
+                this.saveMuteState();
+                updateMuteButtonIcon();
+            },
+            saveMuteState() {
+                try {
+                    localStorage.setItem('robotyMuted', this.isMuted);
+                } catch(e) { console.error("Could not save mute state.", e) }
+            },
+            loadMuteState() {
+                try {
+                    this.isMuted = localStorage.getItem('robotyMuted') === 'true';
+                } catch(e) { console.error("Could not load mute state.", e); this.isMuted = false; }
+            }
+        };
+
+        function initializeAudio() {
+            if (!soundManager.audioCtx) {
+                soundManager.init();
+            }
+        }
+        
         let mazes = [
             // Level 1
             [[1,1,1,1,1,1,1,1],[1,3,0,0,1,0,0,1],[1,1,1,0,1,0,1,1],[1,0,0,0,1,0,0,1],[1,0,1,1,1,1,0,1],[1,0,0,0,0,1,0,1],[1,1,1,1,0,1,1,1],[1,2,0,0,0,1,1,1]],
@@ -739,6 +892,7 @@
         }
         
         function handleHitWall() {
+            soundManager.playSound('hitWall');
             robotEl.classList.add('hit');
             setTimeout(() => {
                 robotEl.classList.remove('hit');
@@ -747,6 +901,7 @@
         }
 
         function handleWin() {
+            soundManager.playSound('winLevel');
             stopStopwatch();
             const elapsedTime = Date.now() - startTime;
             
@@ -790,6 +945,7 @@
             }
             
             winModal.classList.add('show');
+            soundManager.playSound('openModal');
         }
         
         async function moveRobotForward() {
@@ -826,6 +982,7 @@
 
             for (let i = 0; i < steps; i++) {
                 await new Promise(resolve => setTimeout(resolve, 300));
+                soundManager.playSound('moveStep');
                 const moveResult = await moveRobotForward();
 
                 if (moveResult.hitWall) {
@@ -847,6 +1004,7 @@
         }
         
         function showNumberPad() {
+            soundManager.playSound('openModal');
             numberPadModal.classList.add('show');
         }
 
@@ -938,19 +1096,38 @@
                 const rows = currentMaze.length;
                 const cols = currentMaze[0].length;
                 
-                const mazeContainer = document.getElementById('maze-container');
+                // Get style info once
                 const gridStyle = getComputedStyle(mazeGrid);
+                const gameContainer = document.querySelector('.game-container');
+                const gameContainerStyle = getComputedStyle(gameContainer);
+                const rootStyle = getComputedStyle(document.documentElement);
+
+                // --- Start of new sizing logic based on viewport ---
+
+                // Calculate available width
+                const gameContainerHPadding = parseInt(gameContainerStyle.paddingLeft) + parseInt(gameContainerStyle.paddingRight);
                 const mazeGridHMargin = parseInt(gridStyle.paddingLeft) + parseInt(gridStyle.paddingRight) + parseInt(gridStyle.borderLeftWidth) + parseInt(gridStyle.borderRightWidth);
-                const mazeGridVMargin = parseInt(gridStyle.paddingTop) + parseInt(gridStyle.paddingBottom) + parseInt(gridStyle.borderTopWidth) + parseInt(gridStyle.borderBottomWidth);
-
-                const availableWidth = mazeContainer.offsetWidth - mazeGridHMargin;
-                const availableHeight = mazeContainer.offsetHeight - mazeGridVMargin;
-
-                const gap = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--grid-gap')) || 2;
-                
+                const availableWidth = (window.innerWidth) - gameContainerHPadding - mazeGridHMargin - 20; // 20px safety margin for width
+                const gap = parseInt(rootStyle.getPropertyValue('--grid-gap')) || 2;
                 const sizeFromWidth = (availableWidth - (cols - 1) * gap) / cols;
-                const sizeFromHeight = (availableHeight - (rows - 1) * gap) / rows;
+
+                // Calculate available height
+                const gameContainerVPadding = parseInt(gameContainerStyle.paddingTop) + parseInt(gameContainerStyle.paddingBottom);
+                const mazeGridVMargin = parseInt(gridStyle.paddingTop) + parseInt(gridStyle.paddingBottom) + parseInt(gridStyle.borderTopWidth) + parseInt(gridStyle.borderBottomWidth);
+                const containerGap = parseInt(gameContainerStyle.gap) || 8;
+
+                const levelIndicatorHeight = document.getElementById('level-indicator').offsetHeight;
+                const footerHeight = document.querySelector('footer').offsetHeight;
+                const statsHeight = document.getElementById('stats-container').offsetHeight;
                 
+                const otherElementsHeight = levelIndicatorHeight + footerHeight + statsHeight + (containerGap * 3);
+                
+                const availableHeightForMaze = window.innerHeight - otherElementsHeight - gameContainerVPadding - mazeGridVMargin - 20; // 20px safety margin
+
+                const sizeFromHeight = (availableHeightForMaze - (rows - 1) * gap) / rows;
+                
+                // --- End of new sizing logic ---
+
                 let newCellSize = Math.floor(Math.min(sizeFromWidth, sizeFromHeight));
                 newCellSize = Math.max(15, newCellSize); 
                 document.documentElement.style.setProperty('--cell-size', `${newCellSize}px`);
@@ -966,6 +1143,7 @@
 
             isMoving = false;
             disableControls(false);
+            soundManager.playSound('startLevel');
         }
 
         // --- Admin Panel Logic ---
@@ -1046,6 +1224,7 @@
         }
 
         function openAdminPanel() {
+            soundManager.playSound('openModal');
             populateLevelSelector();
             loadMazeInEditor(currentLevel);
             adminModal.classList.add('show');
@@ -1079,14 +1258,35 @@
         const leftBtn = document.getElementById('left-btn');
         const rightBtn = document.getElementById('right-btn');
         const resetBtn = document.getElementById('reset-btn');
+        const muteBtn = document.getElementById('mute-btn');
+        const soundOnIcon = document.getElementById('sound-on-icon');
+        const soundOffIcon = document.getElementById('sound-off-icon');
 
-        forwardBtn.addEventListener('click', () => { startStopwatch(); showNumberPad(); });
-        leftBtn.addEventListener('click', () => { if(isMoving) return; startStopwatch(); robotDir = (robotDir + 3) % 4; updateRobotPosition(); });
-        rightBtn.addEventListener('click', () => { if(isMoving) return; startStopwatch(); robotDir = (robotDir + 1) % 4; updateRobotPosition(); });
-        resetBtn.addEventListener('click', () => { resetLevel(); });
+        function updateMuteButtonIcon() {
+            if (soundManager.isMuted) {
+                soundOnIcon.style.display = 'none';
+                soundOffIcon.style.display = 'block';
+            } else {
+                soundOnIcon.style.display = 'block';
+                soundOffIcon.style.display = 'none';
+            }
+        }
+        
+        muteBtn.addEventListener('click', () => {
+            initializeAudio();
+            soundManager.toggleMute();
+        });
+
+
+        forwardBtn.addEventListener('click', () => { initializeAudio(); soundManager.playSound('selectMove'); startStopwatch(); showNumberPad(); });
+        leftBtn.addEventListener('click', () => { if(isMoving) return; initializeAudio(); soundManager.playSound('turn'); startStopwatch(); robotDir = (robotDir + 3) % 4; updateRobotPosition(); });
+        rightBtn.addEventListener('click', () => { if(isMoving) return; initializeAudio(); soundManager.playSound('turn'); startStopwatch(); robotDir = (robotDir + 1) % 4; updateRobotPosition(); });
+        resetBtn.addEventListener('click', () => { initializeAudio(); soundManager.playSound('click'); resetLevel(); });
         
         numberPadModal.addEventListener('click', (e) => {
             if (e.target.classList.contains('num-btn')) {
+                initializeAudio();
+                soundManager.playSound('click');
                 const steps = parseInt(e.target.dataset.steps, 10);
                 hideNumberPad();
                 moveRobotSteps(steps);
@@ -1095,8 +1295,9 @@
             }
         });
         
-        nextLevelBtn.addEventListener('click', () => { if (currentLevel < mazes.length - 1) { currentLevel++; resetLevel(); } });
+        nextLevelBtn.addEventListener('click', () => { soundManager.playSound('click'); if (currentLevel < mazes.length - 1) { currentLevel++; resetLevel(); } });
         playAgainBtn.addEventListener('click', () => { 
+            soundManager.playSound('click');
             totalScore = 0; 
             updateTotalScoreDisplay(); 
             currentLevel = 0; 
@@ -1108,12 +1309,13 @@
             if (now - adminLastClick > 1000) { adminClickCount = 0; }
             adminClickCount++;
             adminLastClick = now;
-            if (adminClickCount >= 5) { adminClickCount = 0; openAdminPanel(); }
+            if (adminClickCount >= 5) { adminClickCount = 0; initializeAudio(); openAdminPanel(); }
         });
 
         // --- Admin Event Listeners ---
         document.getElementById('close-admin-btn').addEventListener('click', () => {
-             adminModal.classList.remove('show');
+            soundManager.playSound('click');
+            adminModal.classList.remove('show');
         });
         levelSelector.addEventListener('change', () => { loadMazeInEditor(parseInt(levelSelector.value, 10)); });
         editorPalette.addEventListener('click', (e) => {
@@ -1138,6 +1340,7 @@
         document.addEventListener('mouseup', () => { isPainting = false; });
 
         document.getElementById('save-level-btn').addEventListener('click', () => {
+            soundManager.playSound('click');
             try {
                 const selectedLevel = parseInt(levelSelector.value, 10);
                 const newMazeData = JSON.parse(mazeEditor.value);
@@ -1250,6 +1453,8 @@
 
         // --- Initial Load ---
         window.addEventListener('resize', resetLevel);
+        soundManager.loadMuteState();
+        updateMuteButtonIcon();
         loadMazesFromLocalStorage();
         loadHighScores();
         resetLevel();
