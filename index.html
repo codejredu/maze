@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>roboty</title>
+    <title>רובוט במבוך</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
@@ -49,6 +49,15 @@
             padding: 15px; /* Adjusted padding */
             box-sizing: border-box;
             max-width: 100%;
+        }
+        
+        #game-title {
+            font-size: 2.5rem;
+            color: var(--button-glow-color);
+            text-shadow: 0 0 10px var(--button-glow-color);
+            margin: 0 0 10px 0;
+            padding: 0;
+            line-height: 1;
         }
 
         #level-indicator {
@@ -432,6 +441,10 @@
                 gap: 10px;
                 padding: 5px 0;
             }
+            #game-title {
+                font-size: 2rem;
+                margin-bottom: 5px;
+            }
             #maze-grid {
                 padding: 5px;
             }
@@ -465,6 +478,7 @@
 </head>
 <body>
     <div class="game-container">
+        <h1 id="game-title">רובוט במבוך</h1>
         <div id="level-indicator">1</div>
         <div id="maze-container"> 
             <div id="maze-grid"></div>
@@ -1115,12 +1129,13 @@
                 const gameContainerVPadding = parseInt(gameContainerStyle.paddingTop) + parseInt(gameContainerStyle.paddingBottom);
                 const mazeGridVMargin = parseInt(gridStyle.paddingTop) + parseInt(gridStyle.paddingBottom) + parseInt(gridStyle.borderTopWidth) + parseInt(gridStyle.borderBottomWidth);
                 const containerGap = parseInt(gameContainerStyle.gap) || 8;
-
+                
+                const titleHeight = document.getElementById('game-title').offsetHeight;
                 const levelIndicatorHeight = document.getElementById('level-indicator').offsetHeight;
                 const footerHeight = document.querySelector('footer').offsetHeight;
                 const statsHeight = document.getElementById('stats-container').offsetHeight;
                 
-                const otherElementsHeight = levelIndicatorHeight + footerHeight + statsHeight + (containerGap * 3);
+                const otherElementsHeight = titleHeight + levelIndicatorHeight + footerHeight + statsHeight + (containerGap * 4);
                 
                 const availableHeightForMaze = window.innerHeight - otherElementsHeight - gameContainerVPadding - mazeGridVMargin - 20; // 20px safety margin
 
